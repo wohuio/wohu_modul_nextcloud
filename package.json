@@ -1,0 +1,16 @@
+{
+  "name": "wohu_modul_nextcloud",
+  "version": "0.1.0",
+  "description": "Nextcloud integration for WeWeb - File Browser, Upload & Sharing",
+  "scripts": {
+    "build": "weweb build",
+    "serve": "weweb serve"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "webdav": "^5.3.0"
+  },
+  "devDependencies": {
+    "@weweb/cli": "latest"
+  }
+}
