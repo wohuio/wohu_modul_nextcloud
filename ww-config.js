@@ -1,10 +1,11 @@
 export default {
+  name: "Nextcloud File Manager",
   editor: {
     label: {
       en: "Nextcloud File Manager",
       de: "Nextcloud Datei-Manager",
     },
-    icon: "fontawesome/solid/folder",
+    icon: "folder",
   },
   properties: {
     // Nextcloud Connection

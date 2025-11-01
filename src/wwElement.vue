@@ -15,10 +15,10 @@
       </div>
       <div class="nc-actions">
         <button
-          v-if="props.content?.showUpload"
+          v-if="content.showUpload"
           @click="triggerFileUpload"
           class="nc-btn nc-btn-primary"
-          :style="{ backgroundColor: props.content?.primaryColor }"
+          :style="{ backgroundColor: content.primaryColor }"
           :disabled="loading"
         >
           ↑ Upload
@@ -57,7 +57,7 @@
         :key="item.path"
         class="nc-file-item"
         @click="handleItemClick(item)"
-        :class="{ selected: selectedItem?.path === item.path }"
+        :class="{ selected: selectedItem && selectedItem.path === item.path }"
       >
         <div class="nc-file-icon">
           {{ item.type === 'directory' ? '📁' : getFileIcon(item.mime) }}
@@ -71,7 +71,7 @@
         </div>
         <div class="nc-file-actions" @click.stop>
           <button
-            v-if="props.content?.showDownload && item.type === 'file'"
+            v-if="content.showDownload && item.type === 'file'"
             @click="downloadFile(item)"
             class="nc-btn-icon"
             title="Download"
@@ -79,7 +79,7 @@
             ⬇
           </button>
           <button
-            v-if="props.content?.showShare"
+            v-if="content.showShare"
             @click="shareItem(item)"
             class="nc-btn-icon"
             title="Teilen"
@@ -115,7 +115,7 @@
     <div v-if="shareModal.show" class="nc-modal" @click="closeShareModal">
       <div class="nc-modal-content" @click.stop>
         <div class="nc-modal-header">
-          <h3>Teilen: {{ shareModal.item?.name }}</h3>
+          <h3>Teilen: {{ shareModal.item ? shareModal.item.name : '' }}</h3>
           <button @click="closeShareModal" class="nc-btn-close">×</button>
         </div>
         <div class="nc-modal-body">
@@ -134,7 +134,7 @@
               <button
                 @click="copyShareLink"
                 class="nc-btn nc-btn-primary"
-                :style="{ backgroundColor: props.content?.primaryColor }"
+                :style="{ backgroundColor: content.primaryColor }"
               >
                 {{ shareModal.copied ? '✓ Kopiert' : 'Kopieren' }}
               </button>
@@ -152,7 +152,7 @@
       <div class="nc-upload-bar">
         <div
           class="nc-upload-fill"
-          :style="{ width: uploadProgress.percent + '%', backgroundColor: props.content?.primaryColor }"
+          :style="{ width: uploadProgress.percent + '%', backgroundColor: content.primaryColor }"
         ></div>
       </div>
       <div class="nc-upload-text">
@@ -163,7 +163,6 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted } from 'vue';
 import { NextcloudService } from './nextcloudService.js';
 
 export default {
@@ -171,46 +170,40 @@ export default {
   props: {
     uid: { type: String, required: true },
     content: { type: Object, required: true },
-    /* wwEditor:start */
-    wwEditorState: { type: Object },
-    /* wwEditor:end */
   },
-  emits: ['trigger-event'],
-  setup(props, { emit }) {
-    // ===== Reactive State =====
-    const ncService = ref(null);
-    const currentPath = ref('/');
-    const items = ref([]);
-    const loading = ref(false);
-    const error = ref(null);
-    const selectedItem = ref(null);
-    const fileInput = ref(null);
-    const shareLinkInput = ref(null);
-
-    const shareModal = ref({
-      show: false,
-      item: null,
-      shareUrl: null,
+  data() {
+    return {
+      ncService: null,
+      currentPath: '/',
+      items: [],
       loading: false,
       error: null,
-      copied: false,
-    });
-
-    const uploadProgress = ref({
-      show: false,
-      fileName: '',
-      percent: 0,
-    });
-
-    // ===== Computed Properties =====
-    const containerStyle = computed(() => ({
-      '--bg-color': props.content?.backgroundColor || '#FFFFFF',
-      '--text-color': props.content?.textColor || '#000000',
-      '--border-radius': props.content?.borderRadius || '8px',
-    }));
-
-    const breadcrumbs = computed(() => {
-      const parts = currentPath.value.split('/').filter(p => p);
+      selectedItem: null,
+      shareModal: {
+        show: false,
+        item: null,
+        shareUrl: null,
+        loading: false,
+        error: null,
+        copied: false,
+      },
+      uploadProgress: {
+        show: false,
+        fileName: '',
+        percent: 0,
+      },
+    };
+  },
+  computed: {
+    containerStyle() {
+      return {
+        '--bg-color': this.content.backgroundColor || '#FFFFFF',
+        '--text-color': this.content.textColor || '#000000',
+        '--border-radius': this.content.borderRadius || '8px',
+      };
+    },
+    breadcrumbs() {
+      const parts = this.currentPath.split('/').filter(p => p);
       const crumbs = [{ name: 'Home', path: '/' }];
 
       let path = '';
@@ -220,40 +213,59 @@ export default {
       });
 
       return crumbs;
-    });
-
-    // ===== Methods =====
-    const initializeClient = () => {
+    },
+  },
+  watch: {
+    'content.serverUrl': function() {
+      this.initializeClient();
+      this.loadDirectory();
+    },
+    'content.username': function() {
+      this.initializeClient();
+      this.loadDirectory();
+    },
+    'content.appPassword': function() {
+      this.initializeClient();
+      this.loadDirectory();
+    },
+  },
+  mounted() {
+    this.initializeClient();
+    this.currentPath = this.content.initialPath || '/';
+    this.loadDirectory();
+  },
+  methods: {
+    initializeClient() {
       try {
-        ncService.value = new NextcloudService(
-          props.content?.serverUrl,
-          props.content?.username,
-          props.content?.appPassword
+        this.ncService = new NextcloudService(
+          this.content.serverUrl,
+          this.content.username,
+          this.content.appPassword
         );
 
-        if (!ncService.value.isConfigured()) {
-          error.value = 'Bitte konfigurieren Sie Server-URL, Benutzername und App-Passwort.';
+        if (!this.ncService.isConfigured()) {
+          this.error = 'Bitte konfigurieren Sie Server-URL, Benutzername und App-Passwort.';
         } else {
-          error.value = null;
+          this.error = null;
         }
       } catch (err) {
-        error.value = 'Fehler bei der Initialisierung: ' + err.message;
+        this.error = 'Fehler bei der Initialisierung: ' + err.message;
       }
-    };
+    },
 
-    const loadDirectory = async () => {
-      if (!ncService.value?.isConfigured()) {
+    async loadDirectory() {
+      if (!this.ncService || !this.ncService.isConfigured()) {
         return;
       }
 
-      loading.value = true;
-      error.value = null;
+      this.loading = true;
+      this.error = null;
 
       try {
-        items.value = await ncService.value.listDirectory(currentPath.value);
+        this.items = await this.ncService.listDirectory(this.currentPath);
 
         // Sort: directories first, then files
-        items.value.sort((a, b) => {
+        this.items.sort((a, b) => {
           if (a.type === b.type) {
             return a.name.localeCompare(b.name);
           }
@@ -261,87 +273,87 @@ export default {
         });
 
         // Trigger WeWeb event
-        emit('trigger-event', {
+        this.$emit('trigger-event', {
           name: 'directory-loaded',
-          event: { path: currentPath.value, items: items.value },
+          event: { path: this.currentPath, items: this.items },
         });
       } catch (err) {
-        error.value = 'Fehler beim Laden: ' + err.message;
-        items.value = [];
+        this.error = 'Fehler beim Laden: ' + err.message;
+        this.items = [];
       } finally {
-        loading.value = false;
+        this.loading = false;
       }
-    };
+    },
 
-    const navigateToPath = (path) => {
-      currentPath.value = path;
-      loadDirectory();
-    };
+    navigateToPath(path) {
+      this.currentPath = path;
+      this.loadDirectory();
+    },
 
-    const handleItemClick = (item) => {
-      selectedItem.value = item;
+    handleItemClick(item) {
+      this.selectedItem = item;
 
       if (item.type === 'directory') {
-        currentPath.value = item.path;
-        loadDirectory();
+        this.currentPath = item.path;
+        this.loadDirectory();
       }
 
-      emit('trigger-event', {
+      this.$emit('trigger-event', {
         name: 'item-selected',
         event: { item },
       });
-    };
+    },
 
-    const refreshDirectory = () => {
-      loadDirectory();
-    };
+    refreshDirectory() {
+      this.loadDirectory();
+    },
 
-    const triggerFileUpload = () => {
-      if (fileInput.value) {
-        fileInput.value.click();
+    triggerFileUpload() {
+      if (this.$refs.fileInput) {
+        this.$refs.fileInput.click();
       }
-    };
+    },
 
-    const handleFileSelect = async (event) => {
+    async handleFileSelect(event) {
       const files = event.target.files;
       if (!files.length) return;
 
       for (const file of files) {
-        await uploadFile(file);
+        await this.uploadFile(file);
       }
 
       // Clear input
       event.target.value = '';
-    };
+    },
 
-    const uploadFile = async (file) => {
-      uploadProgress.value.show = true;
-      uploadProgress.value.fileName = file.name;
-      uploadProgress.value.percent = 0;
+    async uploadFile(file) {
+      this.uploadProgress.show = true;
+      this.uploadProgress.fileName = file.name;
+      this.uploadProgress.percent = 0;
 
       try {
-        const targetPath = currentPath.value + '/' + file.name;
+        const targetPath = this.currentPath + '/' + file.name;
 
-        await ncService.value.uploadFile(targetPath, file, (percent) => {
-          uploadProgress.value.percent = percent;
+        await this.ncService.uploadFile(targetPath, file, (percent) => {
+          this.uploadProgress.percent = percent;
         });
 
-        emit('trigger-event', {
+        this.$emit('trigger-event', {
           name: 'file-uploaded',
           event: { fileName: file.name, path: targetPath },
         });
 
-        await loadDirectory();
+        await this.loadDirectory();
       } catch (err) {
-        error.value = 'Upload fehlgeschlagen: ' + err.message;
+        this.error = 'Upload fehlgeschlagen: ' + err.message;
       } finally {
-        uploadProgress.value.show = false;
+        this.uploadProgress.show = false;
       }
-    };
+    },
 
-    const downloadFile = async (item) => {
+    async downloadFile(item) {
       try {
-        const content = await ncService.value.downloadFile(item.path);
+        const content = await this.ncService.downloadFile(item.path);
 
         const blob = new Blob([content]);
         const url = URL.createObjectURL(blob);
@@ -353,175 +365,118 @@ export default {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        emit('trigger-event', {
+        this.$emit('trigger-event', {
           name: 'file-downloaded',
           event: { item },
         });
       } catch (err) {
-        error.value = 'Download fehlgeschlagen: ' + err.message;
+        this.error = 'Download fehlgeschlagen: ' + err.message;
       }
-    };
+    },
 
-    const shareItem = async (item) => {
-      shareModal.value.show = true;
-      shareModal.value.item = item;
-      shareModal.value.loading = true;
-      shareModal.value.shareUrl = null;
-      shareModal.value.error = null;
-      shareModal.value.copied = false;
+    async shareItem(item) {
+      this.shareModal.show = true;
+      this.shareModal.item = item;
+      this.shareModal.shareUrl = null;
+      this.shareModal.loading = true;
+      this.shareModal.error = null;
+      this.shareModal.copied = false;
 
       try {
-        const result = await ncService.value.createShareLink(item.path);
-        shareModal.value.shareUrl = result.shareUrl;
+        const shareUrl = await this.ncService.createShare(item.path);
+        this.shareModal.shareUrl = shareUrl;
 
-        emit('trigger-event', {
+        this.$emit('trigger-event', {
           name: 'share-created',
-          event: { item, shareUrl: result.shareUrl },
+          event: { item, shareUrl },
         });
       } catch (err) {
-        shareModal.value.error = 'Fehler beim Teilen: ' + err.message;
+        this.shareModal.error = 'Fehler beim Erstellen des Links: ' + err.message;
       } finally {
-        shareModal.value.loading = false;
+        this.shareModal.loading = false;
       }
-    };
+    },
 
-    const closeShareModal = () => {
-      shareModal.value.show = false;
-      shareModal.value.item = null;
-      shareModal.value.shareUrl = null;
-      shareModal.value.copied = false;
-    };
+    closeShareModal() {
+      this.shareModal.show = false;
+      this.shareModal.copied = false;
+    },
 
-    const copyShareLink = () => {
-      if (shareLinkInput.value) {
-        shareLinkInput.value.select();
+    copyShareLink() {
+      if (this.$refs.shareLinkInput) {
+        this.$refs.shareLinkInput.select();
         document.execCommand('copy');
-        shareModal.value.copied = true;
+        this.shareModal.copied = true;
 
         setTimeout(() => {
-          shareModal.value.copied = false;
+          this.shareModal.copied = false;
         }, 2000);
       }
-    };
+    },
 
-    const deleteItem = async (item) => {
-      if (!confirm(`"${item.name}" wirklich löschen?`)) {
-        return;
-      }
+    async deleteItem(item) {
+      const confirmed = confirm(`Möchten Sie "${item.name}" wirklich löschen?`);
+      if (!confirmed) return;
 
       try {
-        await ncService.value.deleteItem(item.path);
+        await this.ncService.deleteItem(item.path);
 
-        emit('trigger-event', {
+        this.$emit('trigger-event', {
           name: 'item-deleted',
           event: { item },
         });
 
-        await loadDirectory();
+        await this.loadDirectory();
       } catch (err) {
-        error.value = 'Löschen fehlgeschlagen: ' + err.message;
+        this.error = 'Löschen fehlgeschlagen: ' + err.message;
       }
-    };
+    },
 
-    const createFolder = async () => {
-      const name = prompt('Ordnername:');
-      if (!name) return;
+    async createFolder() {
+      const folderName = prompt('Ordnername:');
+      if (!folderName) return;
 
       try {
-        const path = currentPath.value + '/' + name;
-        await ncService.value.createDirectory(path);
+        const newPath = this.currentPath + '/' + folderName;
+        await this.ncService.createFolder(newPath);
 
-        emit('trigger-event', {
+        this.$emit('trigger-event', {
           name: 'folder-created',
-          event: { name, path },
+          event: { name: folderName, path: newPath },
         });
 
-        await loadDirectory();
+        await this.loadDirectory();
       } catch (err) {
-        error.value = 'Ordner erstellen fehlgeschlagen: ' + err.message;
+        this.error = 'Ordner erstellen fehlgeschlagen: ' + err.message;
       }
-    };
+    },
 
-    const getFileIcon = (mime) => {
+    getFileIcon(mime) {
       if (!mime) return '📄';
-
-      if (mime.startsWith('image/')) return '🖼';
+      if (mime.startsWith('image/')) return '🖼️';
       if (mime.startsWith('video/')) return '🎥';
       if (mime.startsWith('audio/')) return '🎵';
       if (mime.includes('pdf')) return '📕';
-      if (mime.includes('text/')) return '📝';
+      if (mime.includes('word') || mime.includes('document')) return '📘';
+      if (mime.includes('excel') || mime.includes('spreadsheet')) return '📊';
+      if (mime.includes('powerpoint') || mime.includes('presentation')) return '📙';
       if (mime.includes('zip') || mime.includes('compressed')) return '📦';
-
       return '📄';
-    };
+    },
 
-    const formatFileSize = (bytes) => {
-      if (!bytes) return '0 B';
-
+    formatFileSize(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
       const k = 1024;
       const sizes = ['B', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
-
       return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-    };
+    },
 
-    const formatDate = (dateString) => {
-      if (!dateString) return '';
-
-      const date = new Date(dateString);
-      return date.toLocaleDateString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    };
-
-    // ===== Watchers =====
-    watch([
-      () => props.content?.serverUrl,
-      () => props.content?.username,
-      () => props.content?.appPassword,
-    ], () => {
-      initializeClient();
-      loadDirectory();
-    });
-
-    // ===== Lifecycle =====
-    onMounted(() => {
-      initializeClient();
-      currentPath.value = props.content?.initialPath || '/';
-      loadDirectory();
-    });
-
-    // ===== Return for template =====
-    return {
-      props,
-      currentPath,
-      items,
-      loading,
-      error,
-      selectedItem,
-      fileInput,
-      shareLinkInput,
-      shareModal,
-      uploadProgress,
-      containerStyle,
-      breadcrumbs,
-      navigateToPath,
-      handleItemClick,
-      refreshDirectory,
-      triggerFileUpload,
-      handleFileSelect,
-      downloadFile,
-      shareItem,
-      closeShareModal,
-      copyShareLink,
-      deleteItem,
-      createFolder,
-      getFileIcon,
-      formatFileSize,
-      formatDate,
-    };
+    formatDate(timestamp) {
+      if (!timestamp) return '';
+      const date = new Date(timestamp * 1000);
+      return date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    },
   },
 };
 </script>
@@ -549,8 +504,8 @@ export default {
 .nc-breadcrumbs {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 5px;
+  flex-wrap: wrap;
 }
 
 .nc-breadcrumb {
@@ -565,28 +520,27 @@ export default {
 }
 
 .nc-breadcrumb .separator {
-  margin-left: 5px;
-  opacity: 0.5;
+  margin: 0 5px;
+  color: rgba(0, 0, 0, 0.3);
 }
 
 .nc-actions {
   display: flex;
   gap: 10px;
-  flex-wrap: wrap;
 }
 
 .nc-btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: white;
-  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  background-color: white;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
 }
 
 .nc-btn:hover:not(:disabled) {
-  background-color: #f5f5f5;
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .nc-btn:disabled {
@@ -595,53 +549,54 @@ export default {
 }
 
 .nc-btn-primary {
+  background-color: #0082C9;
   color: white;
-  border: none;
+  border-color: #0082C9;
 }
 
 .nc-btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
+  background-color: #006ba8;
 }
 
 .nc-error {
   padding: 12px;
   background-color: #fee;
-  color: #c33;
-  border-radius: 6px;
+  border: 1px solid #fcc;
+  border-radius: 4px;
+  color: #c00;
   margin-bottom: 15px;
 }
 
 .nc-loading {
   text-align: center;
   padding: 40px;
-  opacity: 0.6;
+  color: rgba(0, 0, 0, 0.5);
 }
 
 .nc-file-list {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .nc-file-item {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #eee;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.nc-file-item:last-child {
-  border-bottom: none;
+  transition: all 0.2s;
 }
 
 .nc-file-item:hover {
   background-color: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .nc-file-item.selected {
   background-color: rgba(0, 130, 201, 0.1);
+  border-color: #0082C9;
 }
 
 .nc-file-icon {
@@ -657,7 +612,6 @@ export default {
 
 .nc-file-name {
   font-weight: 500;
-  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -665,42 +619,39 @@ export default {
 
 .nc-file-meta {
   font-size: 12px;
-  opacity: 0.6;
+  color: rgba(0, 0, 0, 0.5);
+  margin-top: 2px;
 }
 
 .nc-file-actions {
   display: flex;
   gap: 8px;
-  flex-shrink: 0;
+  margin-left: 12px;
 }
 
 .nc-btn-icon {
-  width: 32px;
-  height: 32px;
-  border: 1px solid #ddd;
-  background: white;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 4px;
+  background-color: white;
   cursor: pointer;
   font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all 0.2s;
 }
 
 .nc-btn-icon:hover {
-  background-color: #f5f5f5;
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .nc-btn-danger:hover {
   background-color: #fee;
-  border-color: #c33;
+  border-color: #fcc;
 }
 
 .nc-empty {
   text-align: center;
-  padding: 60px 20px;
-  opacity: 0.5;
+  padding: 40px;
+  color: rgba(0, 0, 0, 0.5);
 }
 
 .nc-modal {
@@ -711,27 +662,25 @@ export default {
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   z-index: 1000;
 }
 
 .nc-modal-content {
-  background: white;
-  border-radius: 12px;
+  background-color: white;
+  border-radius: 8px;
+  padding: 24px;
   max-width: 500px;
   width: 90%;
-  max-height: 90vh;
-  overflow: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .nc-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid #eee;
+  margin-bottom: 20px;
 }
 
 .nc-modal-header h3 {
@@ -740,23 +689,26 @@ export default {
 }
 
 .nc-btn-close {
-  width: 32px;
-  height: 32px;
-  border: none;
   background: none;
-  font-size: 28px;
+  border: none;
+  font-size: 24px;
   cursor: pointer;
-  color: #999;
-  line-height: 1;
   padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
 }
 
 .nc-btn-close:hover {
-  color: #333;
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .nc-modal-body {
-  padding: 20px;
+  min-height: 60px;
 }
 
 .nc-share-link {
@@ -768,27 +720,28 @@ export default {
 .nc-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
   font-family: monospace;
+  font-size: 13px;
 }
 
 .nc-upload-progress {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  background: white;
+  background-color: white;
   padding: 16px;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 300px;
-  z-index: 999;
+  z-index: 1000;
 }
 
 .nc-upload-bar {
+  width: 100%;
   height: 8px;
-  background-color: #eee;
+  background-color: rgba(0, 0, 0, 0.1);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -796,13 +749,13 @@ export default {
 
 .nc-upload-fill {
   height: 100%;
+  background-color: #0082C9;
   transition: width 0.3s;
-  border-radius: 4px;
 }
 
 .nc-upload-text {
-  font-size: 12px;
-  opacity: 0.8;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.7);
 }
 
 @media (max-width: 768px) {
@@ -812,11 +765,30 @@ export default {
 
   .nc-header {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   .nc-actions {
-    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .nc-file-item {
+    padding: 10px;
+  }
+
+  .nc-file-icon {
+    font-size: 20px;
+    margin-right: 10px;
+  }
+
+  .nc-file-actions {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .nc-btn-icon {
+    padding: 4px 8px;
+    font-size: 14px;
   }
 }
 </style>

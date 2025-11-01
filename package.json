@@ -1,15 +1,12 @@
 {
   "name": "wohu_modul_nextcloud",
   "version": "0.2.0",
-  "description": "Nextcloud integration for WeWeb - File Browser, Upload & Sharing",
-  "main": "src/wwElement.vue",
+  "description": "Nextcloud File Manager for WeWeb",
+  "main": "ww-config.js",
   "scripts": {
-    "build": "weweb build -- name=wohu_modul_nextcloud type=wwobject",
+    "build": "weweb build --name wohu_modul_nextcloud",
     "serve": "weweb serve"
   },
-  "keywords": ["weweb", "element", "nextcloud", "file-manager"],
-  "author": "wohu.io",
-  "license": "MIT",
   "devDependencies": {
     "@weweb/cli": "latest"
   }
