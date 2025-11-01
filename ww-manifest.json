@@ -1,15 +1,14 @@
 {
-  "name": "wohu_modul_nextcloud",
-  "displayName": "Nextcloud File Manager",
-  "version": "0.1.0",
-  "description": {
-    "en": "Complete Nextcloud integration with file browsing, upload, download, and sharing capabilities",
-    "de": "Vollständige Nextcloud-Integration mit Datei-Browser, Upload, Download und Sharing-Funktionen"
-  },
+  "name": "Nextcloud File Manager",
+  "id": "wohu_modul_nextcloud",
+  "version": "0.2.0",
+  "description": "Complete Nextcloud integration with file browsing, upload, download, and sharing capabilities",
   "author": "wohu.io",
   "license": "MIT",
   "repository": "https://github.com/wohuio/wohu_modul_nextcloud.git",
-  "icon": "📁",
-  "categories": ["integration", "file-management"],
-  "private": false
+  "icon": "fontawesome/solid/folder",
+  "preview": {
+    "width": 600,
+    "height": 400
+  }
 }

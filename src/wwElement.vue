@@ -15,10 +15,10 @@
       </div>
       <div class="nc-actions">
         <button
-          v-if="content.showUpload"
+          v-if="props.content?.showUpload"
           @click="triggerFileUpload"
           class="nc-btn nc-btn-primary"
-          :style="{ backgroundColor: content.primaryColor }"
+          :style="{ backgroundColor: props.content?.primaryColor }"
           :disabled="loading"
         >
           ↑ Upload
@@ -71,7 +71,7 @@
         </div>
         <div class="nc-file-actions" @click.stop>
           <button
-            v-if="content.showDownload && item.type === 'file'"
+            v-if="props.content?.showDownload && item.type === 'file'"
             @click="downloadFile(item)"
             class="nc-btn-icon"
             title="Download"
@@ -79,7 +79,7 @@
             ⬇
           </button>
           <button
-            v-if="content.showShare"
+            v-if="props.content?.showShare"
             @click="shareItem(item)"
             class="nc-btn-icon"
             title="Teilen"
@@ -134,7 +134,7 @@
               <button
                 @click="copyShareLink"
                 class="nc-btn nc-btn-primary"
-                :style="{ backgroundColor: content.primaryColor }"
+                :style="{ backgroundColor: props.content?.primaryColor }"
               >
                 {{ shareModal.copied ? '✓ Kopiert' : 'Kopieren' }}
               </button>
@@ -152,7 +152,7 @@
       <div class="nc-upload-bar">
         <div
           class="nc-upload-fill"
-          :style="{ width: uploadProgress.percent + '%', backgroundColor: content.primaryColor }"
+          :style="{ width: uploadProgress.percent + '%', backgroundColor: props.content?.primaryColor }"
         ></div>
       </div>
       <div class="nc-upload-text">
@@ -163,198 +163,186 @@
 </template>
 
 <script>
+import { ref, computed, watch, onMounted } from 'vue';
 import { NextcloudService } from './nextcloudService.js';
 
 export default {
   name: 'NextcloudFileManager',
   props: {
-    content: { type: Object, required: true },
     uid: { type: String, required: true },
+    content: { type: Object, required: true },
     /* wwEditor:start */
-    wwEditorState: { type: Object, required: true },
+    wwEditorState: { type: Object },
     /* wwEditor:end */
   },
-  data() {
-    return {
-      ncService: null,
-      currentPath: '/',
-      items: [],
+  emits: ['trigger-event'],
+  setup(props, { emit }) {
+    // ===== Reactive State =====
+    const ncService = ref(null);
+    const currentPath = ref('/');
+    const items = ref([]);
+    const loading = ref(false);
+    const error = ref(null);
+    const selectedItem = ref(null);
+    const fileInput = ref(null);
+    const shareLinkInput = ref(null);
+
+    const shareModal = ref({
+      show: false,
+      item: null,
+      shareUrl: null,
       loading: false,
       error: null,
-      selectedItem: null,
-      shareModal: {
-        show: false,
-        item: null,
-        shareUrl: null,
-        loading: false,
-        error: null,
-        copied: false,
-      },
-      uploadProgress: {
-        show: false,
-        fileName: '',
-        percent: 0,
-      },
-    };
-  },
-  computed: {
-    containerStyle() {
-      return {
-        backgroundColor: this.content.backgroundColor,
-        color: this.content.textColor,
-        borderRadius: this.content.borderRadius,
-      };
-    },
-    breadcrumbs() {
-      const parts = this.currentPath.split('/').filter(p => p);
+      copied: false,
+    });
+
+    const uploadProgress = ref({
+      show: false,
+      fileName: '',
+      percent: 0,
+    });
+
+    // ===== Computed Properties =====
+    const containerStyle = computed(() => ({
+      '--bg-color': props.content?.backgroundColor || '#FFFFFF',
+      '--text-color': props.content?.textColor || '#000000',
+      '--border-radius': props.content?.borderRadius || '8px',
+    }));
+
+    const breadcrumbs = computed(() => {
+      const parts = currentPath.value.split('/').filter(p => p);
       const crumbs = [{ name: 'Home', path: '/' }];
 
-      let currentPath = '';
+      let path = '';
       parts.forEach(part => {
-        currentPath += '/' + part;
-        crumbs.push({ name: part, path: currentPath });
+        path += '/' + part;
+        crumbs.push({ name: part, path });
       });
 
       return crumbs;
-    },
-  },
-  watch: {
-    'content.serverUrl': 'reinitializeClient',
-    'content.username': 'reinitializeClient',
-    'content.appPassword': 'reinitializeClient',
-  },
-  mounted() {
-    this.initializeClient();
-    this.currentPath = this.content.initialPath || '/';
-    this.loadDirectory();
-  },
-  methods: {
-    initializeClient() {
+    });
+
+    // ===== Methods =====
+    const initializeClient = () => {
       try {
-        this.ncService = new NextcloudService(
-          this.content.serverUrl,
-          this.content.username,
-          this.content.appPassword
+        ncService.value = new NextcloudService(
+          props.content?.serverUrl,
+          props.content?.username,
+          props.content?.appPassword
         );
 
-        if (!this.ncService.isConfigured()) {
-          this.error = 'Bitte konfigurieren Sie Server-URL, Benutzername und App-Passwort.';
+        if (!ncService.value.isConfigured()) {
+          error.value = 'Bitte konfigurieren Sie Server-URL, Benutzername und App-Passwort.';
         } else {
-          this.error = null;
+          error.value = null;
         }
       } catch (err) {
-        this.error = 'Fehler bei der Initialisierung: ' + err.message;
+        error.value = 'Fehler bei der Initialisierung: ' + err.message;
       }
-    },
+    };
 
-    reinitializeClient() {
-      this.initializeClient();
-      this.loadDirectory();
-    },
-
-    async loadDirectory() {
-      if (!this.ncService?.isConfigured()) {
+    const loadDirectory = async () => {
+      if (!ncService.value?.isConfigured()) {
         return;
       }
 
-      this.loading = true;
-      this.error = null;
+      loading.value = true;
+      error.value = null;
 
       try {
-        this.items = await this.ncService.listDirectory(this.currentPath);
+        items.value = await ncService.value.listDirectory(currentPath.value);
+
         // Sort: directories first, then files
-        this.items.sort((a, b) => {
+        items.value.sort((a, b) => {
           if (a.type === b.type) {
             return a.name.localeCompare(b.name);
           }
           return a.type === 'directory' ? -1 : 1;
         });
 
-        // Trigger WeWeb event with current items
-        this.$emit('trigger-event', {
-          name: 'directoryLoaded',
-          event: { path: this.currentPath, items: this.items },
+        // Trigger WeWeb event
+        emit('trigger-event', {
+          name: 'directory-loaded',
+          event: { path: currentPath.value, items: items.value },
         });
       } catch (err) {
-        this.error = 'Fehler beim Laden: ' + err.message;
-        this.items = [];
+        error.value = 'Fehler beim Laden: ' + err.message;
+        items.value = [];
       } finally {
-        this.loading = false;
+        loading.value = false;
       }
-    },
+    };
 
-    navigateToPath(path) {
-      this.currentPath = path;
-      this.loadDirectory();
-    },
+    const navigateToPath = (path) => {
+      currentPath.value = path;
+      loadDirectory();
+    };
 
-    handleItemClick(item) {
-      this.selectedItem = item;
+    const handleItemClick = (item) => {
+      selectedItem.value = item;
 
       if (item.type === 'directory') {
-        this.currentPath = item.path;
-        this.loadDirectory();
+        currentPath.value = item.path;
+        loadDirectory();
       }
 
-      // Trigger WeWeb event
-      this.$emit('trigger-event', {
-        name: 'itemSelected',
+      emit('trigger-event', {
+        name: 'item-selected',
         event: { item },
       });
-    },
+    };
 
-    async refreshDirectory() {
-      await this.loadDirectory();
-    },
+    const refreshDirectory = () => {
+      loadDirectory();
+    };
 
-    triggerFileUpload() {
-      this.$refs.fileInput.click();
-    },
+    const triggerFileUpload = () => {
+      if (fileInput.value) {
+        fileInput.value.click();
+      }
+    };
 
-    async handleFileSelect(event) {
+    const handleFileSelect = async (event) => {
       const files = event.target.files;
       if (!files.length) return;
 
       for (const file of files) {
-        await this.uploadFile(file);
+        await uploadFile(file);
       }
 
       // Clear input
       event.target.value = '';
-    },
+    };
 
-    async uploadFile(file) {
-      this.uploadProgress.show = true;
-      this.uploadProgress.fileName = file.name;
-      this.uploadProgress.percent = 0;
+    const uploadFile = async (file) => {
+      uploadProgress.value.show = true;
+      uploadProgress.value.fileName = file.name;
+      uploadProgress.value.percent = 0;
 
       try {
-        const targetPath = this.currentPath + '/' + file.name;
+        const targetPath = currentPath.value + '/' + file.name;
 
-        await this.ncService.uploadFile(targetPath, file, (percent) => {
-          this.uploadProgress.percent = percent;
+        await ncService.value.uploadFile(targetPath, file, (percent) => {
+          uploadProgress.value.percent = percent;
         });
 
-        // Trigger WeWeb event
-        this.$emit('trigger-event', {
-          name: 'fileUploaded',
+        emit('trigger-event', {
+          name: 'file-uploaded',
           event: { fileName: file.name, path: targetPath },
         });
 
-        // Reload directory
-        await this.loadDirectory();
+        await loadDirectory();
       } catch (err) {
-        this.error = 'Upload fehlgeschlagen: ' + err.message;
+        error.value = 'Upload fehlgeschlagen: ' + err.message;
       } finally {
-        this.uploadProgress.show = false;
+        uploadProgress.value.show = false;
       }
-    },
+    };
 
-    async downloadFile(item) {
+    const downloadFile = async (item) => {
       try {
-        const content = await this.ncService.downloadFile(item.path);
+        const content = await ncService.value.downloadFile(item.path);
 
-        // Create download link
         const blob = new Blob([content]);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -365,100 +353,96 @@ export default {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        // Trigger WeWeb event
-        this.$emit('trigger-event', {
-          name: 'fileDownloaded',
+        emit('trigger-event', {
+          name: 'file-downloaded',
           event: { item },
         });
       } catch (err) {
-        this.error = 'Download fehlgeschlagen: ' + err.message;
+        error.value = 'Download fehlgeschlagen: ' + err.message;
       }
-    },
+    };
 
-    async shareItem(item) {
-      this.shareModal.show = true;
-      this.shareModal.item = item;
-      this.shareModal.loading = true;
-      this.shareModal.shareUrl = null;
-      this.shareModal.error = null;
-      this.shareModal.copied = false;
+    const shareItem = async (item) => {
+      shareModal.value.show = true;
+      shareModal.value.item = item;
+      shareModal.value.loading = true;
+      shareModal.value.shareUrl = null;
+      shareModal.value.error = null;
+      shareModal.value.copied = false;
 
       try {
-        const result = await this.ncService.createShareLink(item.path);
-        this.shareModal.shareUrl = result.shareUrl;
+        const result = await ncService.value.createShareLink(item.path);
+        shareModal.value.shareUrl = result.shareUrl;
 
-        // Trigger WeWeb event
-        this.$emit('trigger-event', {
-          name: 'shareCreated',
+        emit('trigger-event', {
+          name: 'share-created',
           event: { item, shareUrl: result.shareUrl },
         });
       } catch (err) {
-        this.shareModal.error = 'Fehler beim Teilen: ' + err.message;
+        shareModal.value.error = 'Fehler beim Teilen: ' + err.message;
       } finally {
-        this.shareModal.loading = false;
+        shareModal.value.loading = false;
       }
-    },
+    };
 
-    closeShareModal() {
-      this.shareModal.show = false;
-      this.shareModal.item = null;
-      this.shareModal.shareUrl = null;
-      this.shareModal.copied = false;
-    },
+    const closeShareModal = () => {
+      shareModal.value.show = false;
+      shareModal.value.item = null;
+      shareModal.value.shareUrl = null;
+      shareModal.value.copied = false;
+    };
 
-    copyShareLink() {
-      if (this.$refs.shareLinkInput) {
-        this.$refs.shareLinkInput.select();
+    const copyShareLink = () => {
+      if (shareLinkInput.value) {
+        shareLinkInput.value.select();
         document.execCommand('copy');
-        this.shareModal.copied = true;
+        shareModal.value.copied = true;
 
         setTimeout(() => {
-          this.shareModal.copied = false;
+          shareModal.value.copied = false;
         }, 2000);
       }
-    },
+    };
 
-    async deleteItem(item) {
+    const deleteItem = async (item) => {
       if (!confirm(`"${item.name}" wirklich löschen?`)) {
         return;
       }
 
       try {
-        await this.ncService.deleteItem(item.path);
+        await ncService.value.deleteItem(item.path);
 
-        // Trigger WeWeb event
-        this.$emit('trigger-event', {
-          name: 'itemDeleted',
+        emit('trigger-event', {
+          name: 'item-deleted',
           event: { item },
         });
 
-        await this.loadDirectory();
+        await loadDirectory();
       } catch (err) {
-        this.error = 'Löschen fehlgeschlagen: ' + err.message;
+        error.value = 'Löschen fehlgeschlagen: ' + err.message;
       }
-    },
+    };
 
-    async createFolder() {
+    const createFolder = async () => {
       const name = prompt('Ordnername:');
       if (!name) return;
 
       try {
-        const path = this.currentPath + '/' + name;
-        await this.ncService.createDirectory(path);
+        const path = currentPath.value + '/' + name;
+        await ncService.value.createDirectory(path);
 
-        // Trigger WeWeb event
-        this.$emit('trigger-event', {
-          name: 'folderCreated',
+        emit('trigger-event', {
+          name: 'folder-created',
           event: { name, path },
         });
 
-        await this.loadDirectory();
+        await loadDirectory();
       } catch (err) {
-        this.error = 'Ordner erstellen fehlgeschlagen: ' + err.message;
+        error.value = 'Ordner erstellen fehlgeschlagen: ' + err.message;
       }
-    },
+    };
 
-    getFileIcon(mime) {
+    const getFileIcon = (mime) => {
       if (!mime) return '📄';
 
       if (mime.startsWith('image/')) return '🖼';
@@ -469,9 +453,9 @@ export default {
       if (mime.includes('zip') || mime.includes('compressed')) return '📦';
 
       return '📄';
-    },
+    };
 
-    formatFileSize(bytes) {
+    const formatFileSize = (bytes) => {
       if (!bytes) return '0 B';
 
       const k = 1024;
@@ -479,9 +463,9 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
 
       return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-    },
+    };
 
-    formatDate(dateString) {
+    const formatDate = (dateString) => {
       if (!dateString) return '';
 
       const date = new Date(dateString);
@@ -490,17 +474,67 @@ export default {
         month: '2-digit',
         year: 'numeric'
       });
-    },
+    };
+
+    // ===== Watchers =====
+    watch([
+      () => props.content?.serverUrl,
+      () => props.content?.username,
+      () => props.content?.appPassword,
+    ], () => {
+      initializeClient();
+      loadDirectory();
+    });
+
+    // ===== Lifecycle =====
+    onMounted(() => {
+      initializeClient();
+      currentPath.value = props.content?.initialPath || '/';
+      loadDirectory();
+    });
+
+    // ===== Return for template =====
+    return {
+      props,
+      currentPath,
+      items,
+      loading,
+      error,
+      selectedItem,
+      fileInput,
+      shareLinkInput,
+      shareModal,
+      uploadProgress,
+      containerStyle,
+      breadcrumbs,
+      navigateToPath,
+      handleItemClick,
+      refreshDirectory,
+      triggerFileUpload,
+      handleFileSelect,
+      downloadFile,
+      shareItem,
+      closeShareModal,
+      copyShareLink,
+      deleteItem,
+      createFolder,
+      getFileIcon,
+      formatFileSize,
+      formatDate,
+    };
   },
 };
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
 .nextcloud-file-manager {
   width: 100%;
   padding: 20px;
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  border-radius: var(--border-radius);
 }
 
 .nc-header {
@@ -524,15 +558,15 @@ export default {
   padding: 5px 10px;
   border-radius: 4px;
   transition: background-color 0.2s;
+}
 
-  &:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
+.nc-breadcrumb:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
 
-  .separator {
-    margin-left: 5px;
-    opacity: 0.5;
-  }
+.nc-breadcrumb .separator {
+  margin-left: 5px;
+  opacity: 0.5;
 }
 
 .nc-actions {
@@ -549,24 +583,24 @@ export default {
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+}
 
-  &:hover:not(:disabled) {
-    background-color: #f5f5f5;
-  }
+.nc-btn:hover:not(:disabled) {
+  background-color: #f5f5f5;
+}
 
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+.nc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .nc-btn-primary {
   color: white;
   border: none;
+}
 
-  &:hover:not(:disabled) {
-    opacity: 0.9;
-  }
+.nc-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
 }
 
 .nc-error {
@@ -596,18 +630,18 @@ export default {
   border-bottom: 1px solid #eee;
   cursor: pointer;
   transition: background-color 0.2s;
+}
 
-  &:last-child {
-    border-bottom: none;
-  }
+.nc-file-item:last-child {
+  border-bottom: none;
+}
 
-  &:hover {
-    background-color: rgba(0, 0, 0, 0.02);
-  }
+.nc-file-item:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
 
-  &.selected {
-    background-color: rgba(0, 130, 201, 0.1);
-  }
+.nc-file-item.selected {
+  background-color: rgba(0, 130, 201, 0.1);
 }
 
 .nc-file-icon {
@@ -652,10 +686,10 @@ export default {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+}
 
-  &:hover {
-    background-color: #f5f5f5;
-  }
+.nc-btn-icon:hover {
+  background-color: #f5f5f5;
 }
 
 .nc-btn-danger:hover {
@@ -698,11 +732,11 @@ export default {
   align-items: center;
   padding: 20px;
   border-bottom: 1px solid #eee;
+}
 
-  h3 {
-    margin: 0;
-    font-size: 18px;
-  }
+.nc-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
 }
 
 .nc-btn-close {
@@ -715,10 +749,10 @@ export default {
   color: #999;
   line-height: 1;
   padding: 0;
+}
 
-  &:hover {
-    color: #333;
-  }
+.nc-btn-close:hover {
+  color: #333;
 }
 
 .nc-modal-body {
@@ -769,5 +803,20 @@ export default {
 .nc-upload-text {
   font-size: 12px;
   opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+  .nextcloud-file-manager {
+    padding: 12px;
+  }
+
+  .nc-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nc-actions {
+    width: 100%;
+  }
 }
 </style>
