@@ -166,8 +166,13 @@
 import { NextcloudService } from './nextcloudService.js';
 
 export default {
+  name: 'NextcloudFileManager',
   props: {
     content: { type: Object, required: true },
+    uid: { type: String, required: true },
+    /* wwEditor:start */
+    wwEditorState: { type: Object, required: true },
+    /* wwEditor:end */
   },
   data() {
     return {

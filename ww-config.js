@@ -4,6 +4,10 @@ export default {
       en: "Nextcloud File Manager",
       de: "Nextcloud Datei-Manager",
     },
+    icon: "folder",
+  },
+  inherit: {
+    type: "ww-text",
   },
   properties: {
     // Nextcloud Connection
