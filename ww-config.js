@@ -115,4 +115,59 @@ export default {
       section: "style",
     },
   },
+  triggerEvents: [
+    {
+      name: "directory-loaded",
+      label: { en: "On Directory Loaded", de: "Beim Laden des Verzeichnisses" },
+      event: {
+        path: "",
+        items: [],
+      },
+    },
+    {
+      name: "item-selected",
+      label: { en: "On Item Selected", de: "Bei Auswahl eines Elements" },
+      event: {
+        item: {},
+      },
+    },
+    {
+      name: "file-uploaded",
+      label: { en: "On File Uploaded", de: "Nach Upload" },
+      event: {
+        fileName: "",
+        path: "",
+      },
+    },
+    {
+      name: "file-downloaded",
+      label: { en: "On File Downloaded", de: "Nach Download" },
+      event: {
+        item: {},
+      },
+    },
+    {
+      name: "share-created",
+      label: { en: "On Share Created", de: "Nach Link-Erstellung" },
+      event: {
+        item: {},
+        shareUrl: "",
+      },
+    },
+    {
+      name: "item-deleted",
+      label: { en: "On Item Deleted", de: "Nach Löschen" },
+      event: {
+        item: {},
+      },
+    },
+    {
+      name: "folder-created",
+      label: { en: "On Folder Created", de: "Nach Ordner-Erstellung" },
+      event: {
+        name: "",
+        path: "",
+      },
+    },
+  ],
 };
