@@ -8,7 +8,7 @@
   },
   "author": "wohu.io",
   "license": "MIT",
-  "repository": "",
+  "repository": "https://github.com/wohuio/wohu_modul_nextcloud.git",
   "icon": "📁",
   "categories": ["integration", "file-management"],
   "private": false

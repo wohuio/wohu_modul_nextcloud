@@ -21,9 +21,10 @@ A complete Nextcloud integration element for [WeWeb](https://www.weweb.io/) with
 npm install
 ```
 
-This will install:
-- `axios` - For Nextcloud OCS API calls
-- `webdav` - For WebDAV file operations
+No external runtime dependencies - uses native Browser APIs:
+- Fetch API for HTTP requests
+- XMLHttpRequest for upload progress tracking
+- DOMParser for WebDAV XML responses
 
 ### 2. Development Server
 
@@ -117,11 +118,13 @@ Use these events to trigger workflows in WeWeb:
 
 ## Technical Details
 
-- **WebDAV** for file operations (browse, upload, download, delete)
+- **Browser-native APIs** - No external dependencies, uses Fetch API and XMLHttpRequest
+- **WebDAV Protocol** for file operations (PROPFIND, GET, PUT, DELETE, MKCOL)
 - **Nextcloud OCS API** for sharing functionality
 - **Vue 2 Options API** for WeWeb compatibility
 - **Scoped SCSS** styling
 - **Basic Authentication** with username + app password
+- **CORS-compatible** - Works from browser with proper server configuration
 
 ## Browser Compatibility
 

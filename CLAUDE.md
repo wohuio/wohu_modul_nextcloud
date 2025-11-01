@@ -226,8 +226,12 @@ this.$emit('trigger-event', {
 ## Implementation Notes
 
 ### Technology Stack
-- **WebDAV** for file operations via the `webdav` npm package
-- **Nextcloud OCS API** for share link creation via direct axios calls
+- **Browser-native APIs** - No external dependencies
+  - Fetch API for HTTP/WebDAV requests
+  - XMLHttpRequest for upload progress tracking
+  - DOMParser for WebDAV XML response parsing
+- **WebDAV Protocol** for file operations (PROPFIND, GET, PUT, DELETE, MKCOL)
+- **Nextcloud OCS API** for share link creation
 - **Vue 2 Options API** (NOT Vue 3 Composition API) per WeWeb compatibility
 - **Scoped SCSS** for styling
 
