@@ -262,7 +262,13 @@ export default {
       this.error = null;
 
       try {
+        console.log('Loading directory:', this.currentPath);
+        console.log('Server URL:', this.content.serverUrl);
+        console.log('Username:', this.content.username);
+
         this.items = await this.ncService.listDirectory(this.currentPath);
+
+        console.log('Loaded items:', this.items.length);
 
         // Sort: directories first, then files
         this.items.sort((a, b) => {
@@ -278,6 +284,7 @@ export default {
           event: { path: this.currentPath, items: this.items },
         });
       } catch (err) {
+        console.error('Load directory error:', err);
         this.error = 'Fehler beim Laden: ' + err.message;
         this.items = [];
       } finally {
@@ -383,12 +390,12 @@ export default {
       this.shareModal.copied = false;
 
       try {
-        const shareUrl = await this.ncService.createShare(item.path);
-        this.shareModal.shareUrl = shareUrl;
+        const result = await this.ncService.createShareLink(item.path);
+        this.shareModal.shareUrl = result.shareUrl;
 
         this.$emit('trigger-event', {
           name: 'share-created',
-          event: { item, shareUrl },
+          event: { item, shareUrl: result.shareUrl },
         });
       } catch (err) {
         this.shareModal.error = 'Fehler beim Erstellen des Links: ' + err.message;
@@ -438,7 +445,7 @@ export default {
 
       try {
         const newPath = this.currentPath + '/' + folderName;
-        await this.ncService.createFolder(newPath);
+        await this.ncService.createDirectory(newPath);
 
         this.$emit('trigger-event', {
           name: 'folder-created',
@@ -472,9 +479,10 @@ export default {
       return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     },
 
-    formatDate(timestamp) {
-      if (!timestamp) return '';
-      const date = new Date(timestamp * 1000);
+    formatDate(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
       return date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     },
   },
